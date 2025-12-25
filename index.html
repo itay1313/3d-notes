@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Notes - Affirmations</title>
+  </head>
+  <body>
+    <div id="app" class="h-dvh"></div>
+    <canvas id="webgl"></canvas>
+    
+    <!-- Affirmation Modal -->
+    <div id="affirmation-modal" class="affirmation-modal hidden">
+      <div class="affirmation-content">
+        <button id="close-modal" class="close-button">×</button>
+        <p id="affirmation-text" class="affirmation-text"></p>
+      </div>
+    </div>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
