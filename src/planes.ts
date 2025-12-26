@@ -149,10 +149,46 @@ export default class Planes {
       canvas.height = cardHeight
       const ctx = canvas.getContext("2d")!
 
+      const borderRadius = 8
+      const shadowOffset = 4
+      const shadowBlur = 12
+
+      // ============================================
+      // BOX SHADOW - Blue and white shadow effect
+      // ============================================
+      // Draw blue shadow
+      ctx.save()
+      ctx.shadowColor = "rgba(0, 255, 255, 0.4)" // Cyan/blue shadow
+      ctx.shadowBlur = shadowBlur
+      ctx.shadowOffsetX = shadowOffset
+      ctx.shadowOffsetY = shadowOffset
+      ctx.fillStyle = "#000000"
+      this.roundRect(ctx, 0, 0, cardWidth, cardHeight, borderRadius)
+      ctx.fill()
+      ctx.restore()
+
+      // Draw white shadow overlay
+      ctx.save()
+      ctx.shadowColor = "rgba(255, 255, 255, 0.2)" // White shadow
+      ctx.shadowBlur = shadowBlur * 0.7
+      ctx.shadowOffsetX = shadowOffset * 0.5
+      ctx.shadowOffsetY = shadowOffset * 0.5
+      ctx.fillStyle = "#000000"
+      this.roundRect(ctx, 0, 0, cardWidth, cardHeight, borderRadius)
+      ctx.fill()
+      ctx.restore()
+
+      // ============================================
+      // CLIP TO ROUNDED RECTANGLE
+      // ============================================
+      ctx.save()
+      this.roundRect(ctx, 0, 0, cardWidth, cardHeight, borderRadius)
+      ctx.clip()
+
       // ============================================
       // BACKGROUND COLOR - Change this to change card background
       // ============================================
-      ctx.fillStyle = "#000000"  // Black - try "#1a1a1a" for dark gray, "#0a0a0a" for very dark
+      ctx.fillStyle = "#1A1A1A"  // Black - try "#1a1a1a" for dark gray, "#0a0a0a" for very dark
       ctx.fillRect(0, 0, cardWidth, cardHeight)
 
       // ============================================
@@ -167,8 +203,8 @@ export default class Planes {
       ctx.fillStyle = "#ffffff"  // Text color - try "#00ffff" for cyan, "#ff00ff" for magenta
       ctx.textAlign = "center"   // Center text horizontally
       ctx.textBaseline = "middle" // Center text vertically
-      ctx.font = "bold 60px 'Instrument Serif', serif"  // Font: Instrument Serif
-      const fontSize = 60
+      ctx.font = "bold 28px 'Instrument Serif', serif"  // Font: Instrument Serif
+      const fontSize = 28
 
       // Split text into lines that fit the card width - try to keep it to 2-3 lines max
       const words = affirmation.split(" ")
@@ -209,12 +245,8 @@ export default class Planes {
       })
       ctx.shadowBlur = 0 // Reset shadow for next drawing operations
 
-      // ============================================
-      // WHITE BORDER - Add border around the card
-      // ============================================
-      ctx.strokeStyle = "#ffffff"  // White border color
-      ctx.lineWidth = 2  // Border width in pixels
-      ctx.strokeRect(0, 0, cardWidth, cardHeight)  // Draw border around entire card
+      // Restore clipping
+      ctx.restore()
 
       // Convert to image
       const img = new Image()
@@ -242,7 +274,7 @@ export default class Planes {
     // ============================================
     
     // Line color - Change this to change line color
-    ctx.strokeStyle = "#00ffff"  // Cyan - try "#00ff00" (green), "#ff00ff" (magenta), "#ffff00" (yellow)
+    ctx.strokeStyle = "#000"  // Cyan - try "#00ff00" (green), "#ff00ff" (magenta), "#ffff00" (yellow)
     ctx.lineWidth = 1  // Line thickness - try 2 for thicker, 0.5 for thinner
     
     // Number of lines - More lines = busier pattern, fewer = cleaner
@@ -291,7 +323,7 @@ export default class Planes {
     // ============================================
     // RED DOTS - Small accent dots scattered across card
     // ============================================
-    ctx.fillStyle = "#ff0000"  // Dot color - try "#00ff00" (green), "#ff00ff" (magenta)
+    ctx.fillStyle = "#00ff00"  // Dot color - try "#00ff00" (green), "#ff00ff" (magenta)
     const numDots = 5 + Math.random() * 10  // Creates 5-15 random dots
     // Try: 2 + Math.random() * 3 for fewer dots (2-5)
     // Try: 10 + Math.random() * 20 for more dots (10-30)
