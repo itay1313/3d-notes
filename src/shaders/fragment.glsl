@@ -26,7 +26,7 @@ void main()
 
      vec2 atlasUV = vec2(
         mix(xStart, xEnd, vUv.x),
-        mix(yStart, yEnd, (1.-vUv.y)*1.5)
+        mix(yStart, yEnd, 1.-vUv.y)
     );     
 
     

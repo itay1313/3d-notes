@@ -10,7 +10,7 @@ body {
   line-height: 1.15;
   margin: 0;
   padding: 0;
-  background-color: #000;
+  background-color: #0b0b0b;
   overflow: hidden;
 }
 
@@ -104,4 +104,26 @@ body {
   color: #333;
   text-align: center;
   margin: 0;
+}
+
+.author-link {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-family: "Aeonik", sans-serif;
+  transition: all 0.3s ease;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  background-color: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.author-link:hover {
+  color: rgba(0, 255, 255, 1);
+  background-color: rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
 }

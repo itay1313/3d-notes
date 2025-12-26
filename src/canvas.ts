@@ -33,6 +33,7 @@ export default class Canvas {
     this.createScene()
     this.createCamera()
     this.createRenderer()
+    this.raycaster = new THREE.Raycaster()
     this.setSizes()
     this.addEventListeners()
     this.createDebug()
@@ -74,6 +75,8 @@ export default class Canvas {
     this.planes = new Planes({ scene: this.scene, sizes: this.sizes })
     // Bind drag interactions to the renderer's canvas
     this.planes.bindDrag(this.renderer.domElement)
+    // Set up hover detection for slow scroll transition
+    this.planes.setHoverDetection(this.raycaster, this.mouse, this.camera)
   }
 
   createRenderer() {

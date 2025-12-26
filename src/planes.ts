@@ -68,6 +68,10 @@ export default class Planes {
   imageInfos: ImageInfo[] = []
   atlasTexture: THREE.Texture | null = null
   blurryAtlasTexture: THREE.Texture | null = null
+  isHoveringCard: boolean = false
+  raycaster?: THREE.Raycaster
+  mouse?: THREE.Vector2
+  camera?: THREE.Camera
 
   constructor({ scene, sizes }: Props) {
     this.scene = scene
@@ -87,42 +91,226 @@ export default class Planes {
   }
 
   createGeometry() {
-    this.geometry = new THREE.PlaneGeometry(1, 1.69, 1, 1)
+    // Match the card aspect ratio: cardHeight / cardWidth = 260 / 220 = 1.182 (portrait - height > width, very compact)
+    const cardAspectRatio = 260 / 220
+    this.geometry = new THREE.PlaneGeometry(1, cardAspectRatio, 1, 1)
     this.geometry.scale(2, 2, 2)
   }
 
   async fetchCovers() {
-    //const urls: string[] = await get30NewReleaseCovers()
-    const urls: string[] = new Array(30)
-      .fill(0)
-      .map((_, i) => `/covers/image_${i}.jpg`)
-    await this.loadTextureAtlas(urls)
-    this.createBlurryAtlas()
-    this.fillMeshData()
+    try {
+      console.log("Loading affirmations...")
+      // Load affirmations from JSON and generate text cards
+      const response = await fetch("/affirmations.json")
+      if (!response.ok) {
+        throw new Error(`Failed to load affirmations: ${response.status}`)
+      }
+      const data = await response.json()
+      const affirmations = data.affirmations
+      console.log("Loaded", affirmations.length, "affirmations")
+      
+      // Limit to first 10 for faster testing (can increase later)
+      const affirmationsToUse = affirmations.slice(0, 10)
+      console.log("Using", affirmationsToUse.length, "affirmations for cards")
+      
+      console.log("Generating cards...")
+      const cardImages = await this.generateAffirmationCards(affirmationsToUse)
+      console.log("Generated", cardImages.length, "cards")
+      
+      if (cardImages.length === 0) {
+        throw new Error("No cards were generated!")
+      }
+      
+      await this.loadTextureAtlas(cardImages)
+      console.log("Atlas loaded, imageInfos:", this.imageInfos.length)
+      
+      this.createBlurryAtlas()
+      console.log("Blurry atlas created")
+      
+      this.fillMeshData()
+      console.log("Mesh data filled")
+    } catch (error) {
+      console.error("Error in fetchCovers:", error)
+    }
   }
 
-  async loadTextureAtlas(urls: string[]) {
-    // Load all images with CORS-safe approach to avoid tainted canvas
-    const imagePromises = urls.map(async (path) => {
-      try {
-        const res = await fetch(path, { mode: "cors" })
-        if (!res.ok) throw new Error(`Failed to fetch image: ${path}`)
-        const blob = await res.blob()
-        const bitmap = await createImageBitmap(blob)
-        return bitmap as CanvasImageSource
-      } catch (err) {
-        // Fallback to HTMLImageElement with crossOrigin
-        return await new Promise<CanvasImageSource>((resolve, reject) => {
-          const img = new Image()
-          img.crossOrigin = "anonymous"
-          img.onload = () => resolve(img)
-          img.onerror = (e) => reject(e)
-          img.src = path
-        })
-      }
-    })
+  async generateAffirmationCards(affirmations: string[]): Promise<CanvasImageSource[]> {
+    // ============================================
+    // CARD DIMENSIONS - Change these to resize cards
+    // ============================================
+    const cardWidth = 220   // Width in pixels (portrait orientation - width < height)
+    const cardHeight = 260  // Height in pixels (portrait - EXTREMELY small to ensure ONLY one card fits in 580px viewport)
+    const cards: CanvasImageSource[] = []
 
-    const images = await Promise.all(imagePromises)
+    // Generate a card for each affirmation
+    for (const affirmation of affirmations) {
+      const canvas = document.createElement("canvas")
+      canvas.width = cardWidth
+      canvas.height = cardHeight
+      const ctx = canvas.getContext("2d")!
+
+      // ============================================
+      // BACKGROUND COLOR - Change this to change card background
+      // ============================================
+      ctx.fillStyle = "#000000"  // Black - try "#1a1a1a" for dark gray, "#0a0a0a" for very dark
+      ctx.fillRect(0, 0, cardWidth, cardHeight)
+
+      // ============================================
+      // ABSTRACT PATTERN - Cyan lines and red dots
+      // ============================================
+      // This draws the circuit-board style pattern
+      this.drawAbstractPattern(ctx, cardWidth, cardHeight)
+
+      // ============================================
+      // TEXT STYLING - Customize the affirmation text appearance
+      // ============================================
+      ctx.fillStyle = "#ffffff"  // Text color - try "#00ffff" for cyan, "#ff00ff" for magenta
+      ctx.textAlign = "center"   // Center text horizontally
+      ctx.textBaseline = "middle" // Center text vertically
+      ctx.font = "bold 60px 'Instrument Serif', serif"  // Font: Instrument Serif
+      const fontSize = 60
+
+      // Split text into lines that fit the card width - try to keep it to 2-3 lines max
+      const words = affirmation.split(" ")
+      const lines: string[] = []
+      let currentLine = ""
+      const maxWidth = cardWidth - 60  // Padding from edges
+
+      for (const word of words) {
+        const testLine = currentLine + (currentLine ? " " : "") + word
+        const metrics = ctx.measureText(testLine)
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine)
+          currentLine = word
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (currentLine) lines.push(currentLine)
+
+      // ============================================
+      // TEXT GLOW EFFECT - Makes text glow with cyan light
+      // ============================================
+      ctx.shadowColor = "rgba(0, 255, 255, 0.1)"  // Cyan glow, 50% opacity
+      // Try: "rgba(255, 0, 255, 0.8)" for magenta, "rgba(0, 255, 0, 0.6)" for green
+      ctx.shadowBlur = 10  // Glow blur radius - try 5 for subtle, 20 for strong glow
+      
+      // Calculate vertical centering - center all lines as ONE tight block in the middle
+      const lineHeight = fontSize + 8  // Tighter spacing between lines
+      const totalTextHeight = (lines.length - 1) * lineHeight + fontSize
+      const centerY = cardHeight / 2  // Center of card
+      const startY = centerY - (totalTextHeight / 2) + (fontSize / 2)  // Start from top of text block
+      
+      // Draw ONLY the affirmation text, centered as one tight block
+      // Use "top" baseline for precise positioning
+      ctx.textBaseline = "top"
+      lines.forEach((line, i) => {
+        ctx.fillText(line, cardWidth / 2, startY + (i * lineHeight))
+      })
+      ctx.shadowBlur = 0 // Reset shadow for next drawing operations
+
+      // ============================================
+      // WHITE BORDER - Add border around the card
+      // ============================================
+      ctx.strokeStyle = "#ffffff"  // White border color
+      ctx.lineWidth = 2  // Border width in pixels
+      ctx.strokeRect(0, 0, cardWidth, cardHeight)  // Draw border around entire card
+
+      // Convert to image
+      const img = new Image()
+      img.src = canvas.toDataURL()
+      await new Promise((resolve, reject) => {
+        img.onload = () => {
+          console.log("Card image loaded:", img.width, "x", img.height)
+          resolve(null)
+        }
+        img.onerror = (e) => {
+          console.error("Error loading card image:", e)
+          reject(e)
+        }
+      })
+      cards.push(img)
+    }
+
+    console.log("All", cards.length, "cards generated successfully")
+    return cards
+  }
+
+  drawAbstractPattern(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    // ============================================
+    // CYAN LINES - Circuit-board style geometric lines
+    // ============================================
+    
+    // Line color - Change this to change line color
+    ctx.strokeStyle = "#00ffff"  // Cyan - try "#00ff00" (green), "#ff00ff" (magenta), "#ffff00" (yellow)
+    ctx.lineWidth = 1  // Line thickness - try 2 for thicker, 0.5 for thinner
+    
+    // Number of lines - More lines = busier pattern, fewer = cleaner
+    const numLines = 30 + Math.random() * 20  // Creates 30-50 random lines
+    // Try: 10 + Math.random() * 10 for sparse (10-20 lines)
+    // Try: 50 + Math.random() * 50 for dense (50-100 lines)
+    
+    for (let i = 0; i < numLines; i++) {
+      const x1 = Math.random() * width   // Random starting X position
+      const y1 = Math.random() * height  // Random starting Y position
+      const isHorizontal = Math.random() > 0.5  // 50% chance horizontal, 50% vertical
+      const length = 20 + Math.random() * 60  // Line length: 20-80 pixels
+      // Try: 10 + Math.random() * 30 for shorter lines (10-40px)
+      // Try: 50 + Math.random() * 100 for longer lines (50-150px)
+      
+      ctx.beginPath()
+      if (isHorizontal) {
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x1 + length, y1)
+      } else {
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x1, y1 + length)
+      }
+      ctx.stroke()
+      
+      // ============================================
+      // L-SHAPES AND CORNERS - Creates right-angle turns
+      // ============================================
+      // 30% chance to create a corner (L-shape)
+      if (Math.random() > 0.7) {  // Try > 0.5 for more corners (50%), > 0.9 for fewer (10%)
+        const cornerLength = 20 + Math.random() * 40  // Corner extension length
+        if (isHorizontal) {
+          ctx.beginPath()
+          ctx.moveTo(x1 + length, y1)
+          ctx.lineTo(x1 + length, y1 + (Math.random() > 0.5 ? cornerLength : -cornerLength))
+          ctx.stroke()
+        } else {
+          ctx.beginPath()
+          ctx.moveTo(x1, y1 + length)
+          ctx.lineTo(x1 + (Math.random() > 0.5 ? cornerLength : -cornerLength), y1 + length)
+          ctx.stroke()
+        }
+      }
+    }
+
+    // ============================================
+    // RED DOTS - Small accent dots scattered across card
+    // ============================================
+    ctx.fillStyle = "#ff0000"  // Dot color - try "#00ff00" (green), "#ff00ff" (magenta)
+    const numDots = 5 + Math.random() * 10  // Creates 5-15 random dots
+    // Try: 2 + Math.random() * 3 for fewer dots (2-5)
+    // Try: 10 + Math.random() * 20 for more dots (10-30)
+    
+    for (let i = 0; i < numDots; i++) {
+      const x = Math.random() * width
+      const y = Math.random() * height
+      const size = 1 + Math.random() * 2  // Dot size: 1-3 pixels
+      // Try: 2 + Math.random() * 3 for larger dots (2-5px)
+      // Try: 0.5 + Math.random() * 1 for smaller dots (0.5-1.5px)
+      
+      ctx.beginPath()
+      ctx.arc(x, y, size, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  async loadTextureAtlas(images: CanvasImageSource[]) {
+    // Images are already CanvasImageSource objects from generateAffirmationCards
 
     // Calculate atlas dimensions (for simplicity, we'll stack images vertically)
     const atlasWidth = Math.max(
@@ -174,7 +362,12 @@ export default class Planes {
     this.atlasTexture.minFilter = THREE.LinearFilter
     this.atlasTexture.magFilter = THREE.LinearFilter
     this.atlasTexture.needsUpdate = true
-    this.material.uniforms.uAtlas.value = this.atlasTexture
+    
+    // Update material uniform
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.uAtlas.value = this.atlasTexture
+      console.log("Atlas texture assigned to material")
+    }
   }
 
   createBlurryAtlas() {
@@ -193,46 +386,28 @@ export default class Planes {
     this.blurryAtlasTexture.minFilter = THREE.LinearFilter
     this.blurryAtlasTexture.magFilter = THREE.LinearFilter
     this.blurryAtlasTexture.needsUpdate = true
-    this.material.uniforms.uBlurryAtlas.value = this.blurryAtlasTexture
+    
+    // Update material uniform
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.uBlurryAtlas.value = this.blurryAtlasTexture
+      console.log("Blurry atlas texture assigned to material")
+    }
   }
 
   createCustomCardWrapper(): THREE.Texture {
     // Create a custom card wrapper texture
-    // Shader logic: texel.b<0.02 shows atlas (image), otherwise shows wrapper design
+    // Shader logic: texel.b<0.02 shows atlas (text cards), otherwise shows wrapper design
+    // IMPORTANT: The entire area must have blue < 0.02 to show the cards
     const canvas = document.createElement("canvas")
     canvas.width = 512
-    canvas.height = 866 // Aspect ratio 1:1.69 (phone-like)
+    canvas.height = 600 // Match card height (reduced from 866)
     const ctx = canvas.getContext("2d")!
 
-    // Fill entire canvas with color where blue < 0.02 (so image shows through)
-    // Use RGB where B component is very low (normalized: 0/255 = 0.0)
-    ctx.fillStyle = "#ff0000" // Red = RGB(255, 0, 0), blue = 0, so image shows
+    // Fill entire canvas with color where blue < 0.02 (so text cards show through)
+    // Red = RGB(255, 0, 0), blue = 0, so shader will show atlas directly
+    // Make sure alpha is 1.0 (fully opaque) so shader doesn't discard
+    ctx.fillStyle = "rgba(255, 0, 0, 1.0)" // Red with full alpha
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Now add card frame design where we want it visible
-    // Use colors with blue >= 0.02 for frame areas
-    const cornerRadius = 20
-    const padding = 10
-    const borderWidth = 3
-    
-    // Draw card border frame (with blue > 0.02 so it shows as design)
-    ctx.strokeStyle = "#00ffff" // Cyan = RGB(0, 255, 255), blue = 255, so frame shows
-    ctx.lineWidth = borderWidth
-    this.roundRect(ctx, padding, padding, canvas.width - padding * 2, canvas.height - padding * 2, cornerRadius)
-    ctx.stroke()
-
-    // Add decorative elements at top and bottom (optional)
-    // Top decorative bar
-    ctx.fillStyle = "#00ffff" // Cyan for visible design
-    this.roundRect(ctx, padding + cornerRadius, padding + 15, 
-                   canvas.width - (padding + cornerRadius) * 2, 50, 8)
-    ctx.fill()
-
-    // Bottom decorative bar
-    ctx.fillStyle = "#00ffff" // Cyan for visible design
-    this.roundRect(ctx, padding + cornerRadius, canvas.height - padding - 65, 
-                   canvas.width - (padding + cornerRadius) * 2, 50, 8)
-    ctx.fill()
 
     // Convert to texture
     const texture = new THREE.Texture(canvas)
@@ -243,6 +418,7 @@ export default class Planes {
     texture.generateMipmaps = false
     texture.needsUpdate = true
 
+    console.log("Wrapper texture created:", canvas.width, "x", canvas.height, "alpha should be 1.0")
     return texture
   }
 
@@ -276,8 +452,8 @@ export default class Planes {
         uWrapperTexture: {
           value: this.createCustomCardWrapper(),
         },
-        uAtlas: new THREE.Uniform(this.atlasTexture),
-        uBlurryAtlas: new THREE.Uniform(this.blurryAtlasTexture),
+        uAtlas: { value: null },
+        uBlurryAtlas: { value: null },
         uScrollY: { value: 0 },
         // Calculate total length of the gallery
         uSpeedY: { value: 0 },
@@ -376,6 +552,27 @@ export default class Planes {
     window.addEventListener("pointerup", onPointerUp)
   }
 
+  setHoverDetection(raycaster: THREE.Raycaster, mouse: THREE.Vector2, camera: THREE.Camera) {
+    this.raycaster = raycaster
+    this.mouse = mouse
+    this.camera = camera
+  }
+
+  checkHover() {
+    if (!this.raycaster || !this.mouse || !this.camera || !this.mesh) {
+      this.isHoveringCard = false
+      return
+    }
+
+    // Update raycaster with current mouse position and camera
+    this.raycaster.setFromCamera(this.mouse, this.camera)
+
+    // Check for intersections with the instanced mesh
+    const intersects = this.raycaster.intersectObject(this.mesh)
+
+    this.isHoveringCard = intersects.length > 0
+  }
+
   onWheel(event: MouseEvent) {
     const normalizedWheel = normalizeWheel(event)
 
@@ -388,6 +585,22 @@ export default class Planes {
   }
 
   render(delta: number) {
+    // Pause all animations when dragging
+    if (this.drag.isDown) {
+      // Only update drag position, pause everything else
+      this.drag.xCurrent +=
+        (this.drag.xTarget - this.drag.xCurrent) * this.dragDamping
+      this.drag.yCurrent +=
+        (this.drag.yTarget - this.drag.yCurrent) * this.dragDamping
+
+      this.material.uniforms.uDrag.value.set(
+        this.drag.xCurrent,
+        this.drag.yCurrent
+      )
+      return // Exit early - don't update time, scroll, or speed
+    }
+
+    // Normal rendering when not dragging
     this.material.uniforms.uTime.value += delta * 0.015
 
     // Smoothly interpolate current drag towards target
@@ -401,10 +614,16 @@ export default class Planes {
       this.drag.yCurrent
     )
 
+    // Check if hovering over a card to slow down scroll transition
+    this.checkHover()
+    
+    // Use slower interpolation when hovering (0.02 = very slow) vs normal (0.12 = faster)
+    const scrollEase = this.isHoveringCard ? 0.02 : 0.12
+    
     this.scrollY.current = interpolate(
       this.scrollY.current,
       this.scrollY.target,
-      0.12
+      scrollEase
     )
 
     this.material.uniforms.uScrollY.value = this.scrollY.current
